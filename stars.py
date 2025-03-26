@@ -1,5 +1,6 @@
 import requests
 
+
 def get_ton_rub_price():
     try:
         # Получаем курс TON/USDT
@@ -19,31 +20,31 @@ def get_ton_rub_price():
     except Exception as e:
         return f"Ошибка: {e}"
 
-def calculate_star_price(ton_price, stars_to_ton_ratio):
+
+def calculate_star_price(ton_price, stars_to_ton_ratio, stars_count=100):
     """
-    Функция для расчета цены одной звезды
+    Функция для расчета цены звезд
     :param ton_price: цена за 1 тонну
     :param stars_to_ton_ratio: соотношение для перевода звезд в тонны (например, 100 звезд это 0.45 тон)
-    :return: цена одной звезды
+    :param stars_count: количество звезд (по умолчанию 100)
+    :return: словарь с результатами расчетов
     """
-    total_price_for_stars = ton_price * stars_to_ton_ratio  # Цена за все 100 звезд
-    star_price = total_price_for_stars / 100  # Цена за одну звезду
-    return round(star_price, 2)
+    try:
+        # Расчет цены одной звезды
+        total_price_for_stars = ton_price * stars_to_ton_ratio  # Цена за все звезды
+        star_price = total_price_for_stars / stars_count  # Цена за одну звезду
 
+        # Расчет по курсу 1.65
+        standard_price_per_star = 1.65
+        total_standard_price = standard_price_per_star * stars_count
+        price_difference = standard_price_per_star - star_price
 
-if __name__ == "__main__":
-    # Получаем цену за 1 тонну через API
-    ton_price = get_ton_rub_price()
-
-    # Проверяем, если произошла ошибка при получении цены
-    if isinstance(ton_price, str) and ton_price.startswith("Ошибка"):
-        print(ton_price)
-    else:
-        # Запрашиваем количество тонн для 100 звезд (например, 0.45 тон)
-        stars_to_ton_ratio = float(input("Введите количество тонн для 100 звезд (например, 0.45): "))
-
-        # Рассчитываем цену одной звезды
-        star_price = calculate_star_price(ton_price, stars_to_ton_ratio)
-        print(f"Цена одной звезды: {star_price} рублей")
-
-        print(f"Текущая цена TON/RUB: {ton_price}")
+        return {
+            'star_price': round(star_price, 2),
+            'total_price': round(total_price_for_stars, 2),
+            'standard_price': round(total_standard_price, 2),
+            'price_difference': round(price_difference, 2),
+            'ton_price': round(ton_price, 2)
+        }
+    except Exception as e:
+        return f"Ошибка расчета: {e}"

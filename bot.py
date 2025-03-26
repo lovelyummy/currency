@@ -37,10 +37,10 @@ router = Router()
 # Создаем сессию для подключения к основной сети Bybit
 session = HTTP(testnet=False)
 
-# Определяем состояния FSM
 class Form(StatesGroup):
-    amount = State()  # Уже есть
-    stars_ratio = State()  #
+    amount = State()  # Для P2P
+    stars_ratio = State()  # Для курса звезд (сколько TON за 100 звезд)
+    stars_count = State()  # Для количества звезд
 
 # Функция для установки команд меню
 async def set_bot_commands(bot: Bot):
@@ -61,37 +61,74 @@ async def start_command(message: Message):
 @router.callback_query(F.data == "stars")
 async def stars_callback(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "Введите количество тонн для 100 звезд (например, 0.45):",
+        "Введите курс (сколько TON за 100 звезд, например 0.42):",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
             [types.InlineKeyboardButton(text="Назад", callback_data="back")]
         ])
     )
     await state.set_state(Form.stars_ratio)
 
-@router.message(Form.stars_ratio)  # Используем Form.stars_ratio
+
+@router.message(Form.stars_ratio)
 async def process_stars_ratio(message: Message, state: FSMContext):
     try:
+        # Сохраняем курс (сколько TON за 100 звезд)
         stars_to_ton_ratio = float(message.text)
-        ton_price = get_ton_rub_price()
+        await state.update_data(stars_ratio=stars_to_ton_ratio)
 
+        await message.answer(
+            "Теперь введите количество звезд:",
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                [types.InlineKeyboardButton(text="Назад", callback_data="stars")]
+            ])
+        )
+        await state.set_state(Form.stars_count)
+
+    except ValueError:
+        await message.answer("Пожалуйста, введите корректное число (например, 0.42).")
+    except Exception as e:
+        logger.error(f"Error in process_stars_ratio: {e}")
+        await message.answer(f"⚠ Ошибка: {str(e)}")
+        await state.clear()
+
+
+@router.message(Form.stars_count)
+async def process_stars_count(message: Message, state: FSMContext):
+    try:
+        stars_count = int(message.text)
+        if stars_count <= 0:
+            raise ValueError("Количество звезд должно быть больше 0")
+
+        data = await state.get_data()
+        stars_to_ton_ratio = data.get('stars_ratio')
+
+        ton_price = get_ton_rub_price()
         if isinstance(ton_price, str) and ton_price.startswith("Ошибка"):
             await message.answer(ton_price, reply_markup=get_main_menu_keyboard())
             await state.clear()
             return
 
-        star_price = calculate_star_price(ton_price, stars_to_ton_ratio)
+        calculation = calculate_star_price(ton_price, stars_to_ton_ratio, stars_count)
+
         result_text = (
-            f"⭐️ *Цена одной звезды:* {star_price} рублей\n"
-            f"💎 *Текущая цена TON/RUB:* {ton_price} рублей"
+            f"⭐️ *Количество звезд:* {stars_count}\n"
+            f"💎 *Курс (TON за 100 звезд):* {stars_to_ton_ratio}\n"
+            f"💰 *Цена за 1 звезду:* {calculation['star_price']} ₽\n"
+            f"💵 *Общая стоимость:* {calculation['total_price']} ₽\n\n"
+            f"📊 *Сравнение с курсом 1.65 ₽/звезда:*\n"
+            f"• Стоимость по 1.65: {calculation['standard_price']} ₽\n"
+            f"• Разница за 1 звезду: {calculation['price_difference']} ₽\n"
+            f"• Общая разница: {round(calculation['price_difference'] * stars_count, 2)} ₽\n\n"
+            f"💎 *Текущая цена TON/RUB:* {calculation['ton_price']} ₽"
         )
 
         await message.answer(result_text, reply_markup=get_main_menu_keyboard(), parse_mode=ParseMode.MARKDOWN)
         await state.clear()
 
     except ValueError:
-        await message.answer("Пожалуйста, введите корректное число (например, 0.45).")
+        await message.answer("Пожалуйста, введите корректное количество звезд (целое число больше 0).")
     except Exception as e:
-        logger.error(f"Error in process_stars_ratio: {e}")
+        logger.error(f"Error in process_stars_count: {e}")
         await message.answer(f"⚠ Ошибка: {str(e)}")
         await state.clear()
 
